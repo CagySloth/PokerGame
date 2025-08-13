@@ -312,7 +312,7 @@ class Server
         }
 
         Random rnd = new Random();
-        var winnerRandom = activePlayers[rnd.Next(activePlayers.Count)];
+        var winnerRandom = activePlayers[rnd.Next(activePlayers.Count)]; // Logic missing
         winnerRandom.Chips += pot;
         BroadcastMessage($"[SHOWDOWN] {winnerRandom.Name} wins the pot of {pot} chips!");
         pot = 0;
