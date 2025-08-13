@@ -1,12 +1,57 @@
 CheckIfAllBetsMatched()
+	Input:			List<Player> players
+	Expected output:	boolean
+
 RevealFlop()
+	Input:			List<string> deck
+	Expected output:	three cards
+
+	Check if the output cards are consistent with the shuffled deck.
+
 RevealTurn()
+	Input:			List<string> deck
+	Expected output:	one card
+	
+	Check if the output card is consistent with the shuffled deck.
+
 RevealRiver()
+	Input:			List<string> deck
+	Expected output:	one card
+	
+	Check if the output card is consistent with the shuffled deck.
+
 DetermineWinner()
+	Input:			List<Player> players, int pot
+	Expected output:	
+
+	Logic for determining winner is missing.
+
 ResetForNextHand()
-HandlePlayerAction()
+	Input:			
+	Expected output:	
+
 SetBlinds()
+	Input:			List<Player> players
+	Expected output:	smallBlindIndex, bigBlindIndex
+
 PlaceBlind()
+	Input:			Player player, int amount
+	Expected output:	update player.Chips, player.CurrentBet, pot
+
 DealHoleCards()
+	Input:			List<string> deck
+	Expected output:	update player.HoleCards
+
 ShuffleDeck()
+	Input:			
+	Expected output:	List<string> deck
+
+	Randomness of shuffled deck need to be tested.
+
 HandleClientMessage()
+	Input:			
+	Expected output:	
+
+HandlePlayerAction()
+	Input:			Player player, string action, int raiseAmount (= 0)
+	Expected output:	update game information
