@@ -310,12 +310,148 @@ class Server
             pot = 0;
             return;
         }
+      
+        // Evaluate each player's hand
+        var playerScores = new List<(Player player, long score)>();
+        foreach (var player in activePlayers)
+        {
+            long score = EvaluateHand(player.HoleCards, communityCards);
+            playerScores.Add((player, score));
+            Console.WriteLine($"{player.Name}: {player.HoleCards[0]} {player.HoleCards[1]} => Score: {score}");
+        }
 
-        Random rnd = new Random();
-        var winnerRandom = activePlayers[rnd.Next(activePlayers.Count)]; // Logic missing
-        winnerRandom.Chips += pot;
-        BroadcastMessage($"[SHOWDOWN] {winnerRandom.Name} wins the pot of {pot} chips!");
+        // Sort by score descending
+        playerScores.Sort((a, b) => b.score.CompareTo(a.score));
+        long bestScore = playerScores[0].score;
+
+        // Find all players with the best hand (handle ties)
+        var winners = playerScores.Where(x => x.score == bestScore).Select(x => x.player).ToList();
+
+        int totalPot = pot;
+        int splitAmount = totalPot / winners.Count;
+        int remainder = totalPot % winners.Count;
+
+        if (winners.Count == 1)
+        {
+            var winner = winners[0];
+            winner.Chips += splitAmount + remainder;
+            BroadcastMessage($"[SHOWDOWN] {winner.Name} wins {splitAmount + remainder} chips with the best hand!");
+        }
+        else
+        {
+            string winnerNames = string.Join(" and ", winners.Select(w => w.Name));
+            BroadcastMessage($"[SHOWDOWN] {winnerNames} split the pot! Each gets {splitAmount} chips.");
+            foreach (var winner in winners)
+            {
+                winner.Chips += splitAmount;
+            }
+            // Add remainder to first winner
+            winners[0].Chips += remainder;
+        }
         pot = 0;
+    }
+
+    private static long EvaluateHand(string[] holeCards, string[] communityCards)
+    {
+        // Normal evaluation for short deck
+        List<string> allCards = new List<string>();
+        allCards.AddRange(holeCards);
+        allCards.AddRange(communityCards);
+
+        var ranks = allCards.Select(GetCardRank).OrderByDescending(x => x).ToList();
+        var suits = allCards.Select(GetCardSuit).ToList();
+
+        var rankCounts = ranks.GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+        var suitCounts = suits.GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+
+        bool isFlush = suitCounts.Values.Any(c => c >= 5);
+        bool isStraight = false;
+        int highStraight = 0;
+
+        // Check for straight in short deck (10, J, Q, K, A)
+        var uniqueRanks = ranks.Distinct().OrderByDescending(x => x).ToList();
+        if (uniqueRanks.Contains(14) && uniqueRanks.Contains(13) && uniqueRanks.Contains(12) && uniqueRanks.Contains(11) && uniqueRanks.Contains(10))
+        {
+            isStraight = true;
+            highStraight = 14; // Ace-high straight
+        }
+
+        // No wheel straight (A-5-4-3-2) because 5,4,3,2 not in deck
+
+        // Four of a Kind, Full House, etc.
+        int[] ofAKind = rankCounts.Values.OrderByDescending(x => x).ToArray();
+        int fourOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 4 ? 4 : 0;
+        int threeOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 3 ? 3 : 0;
+        int pair = ofAKind.Length >= 1 && ofAKind[0] == 2 ? 2 : 0;
+        int twoPair = ofAKind.Length >= 2 && ofAKind[1] == 2 ? 2 : 0;
+
+        long score = 0;
+
+        if (isStraight && isFlush)
+        {
+            score = (10_000_000L) | (highStraight << 16); // Straight flush
+        }
+        else if (fourOfAKind == 4)
+        {
+            int quadRank = rankCounts.First(kv => kv.Value == 4).Key;
+            int kicker = ranks.Where(r => r != quadRank).Max();
+            score = (9_900_000L) | (quadRank << 16) | (kicker << 8);
+        }
+        else if (threeOfAKind == 3 && twoPair >= 2)
+        {
+            int trips = rankCounts.First(kv => kv.Value == 3).Key;
+            int pair = rankCounts.First(kv => kv.Value >= 2 && kv.Key != trips).Key;
+            score = (9_800_000L) | (trips << 16) | (pair << 8);
+        }
+        else if (isFlush)
+        {
+            var flushRanks = allCards
+                .Where(card => suitCounts[GetCardSuit(card)] >= 5)
+                .Select(GetCardRank)
+                .OrderByDescending(x => x)
+                .Take(5);
+            score = (9_700_000L);
+            int shift = 16;
+            foreach (int r in flushRanks)
+            {
+                score |= (r << shift);
+                shift -= 8;
+            }
+        }
+        else if (isStraight)
+        {
+            score = (9_600_000L) | (highStraight << 16);
+        }
+        else if (threeOfAKind == 3)
+        {
+            int trips = rankCounts.First(kv => kv.Value == 3).Key;
+            var kickers = ranks.Where(r => r != trips).Take(2);
+            score = (9_550_000L) | (trips << 16) | (kickers.First() << 8) | kickers.Last();
+        }
+        else if (twoPair == 2)
+        {
+            var pairs = rankCounts.Where(kv => kv.Value == 2).OrderByDescending(kv => kv.Key).Take(2);
+            int firstPair = pairs.First().Key;
+            int secondPair = pairs.Last().Key;
+            int kicker = ranks.Where(r => r != firstPair && r != secondPair).Max();
+            score = (9_540_000L) | (firstPair << 16) | (secondPair << 8) | kicker;
+        }
+        else if (pair == 2)
+        {
+            int pairRank = rankCounts.First(kv => kv.Value == 2).Key;
+            var kickers = ranks.Where(r => r != pairRank).Take(3);
+            score = (9_530_000L) | (pairRank << 16) | (kickers.ElementAt(0) << 8) | (kickers.ElementAt(1) << 4) | kickers.ElementAt(2);
+        }
+        else
+        {
+            score = (9_520_000L);
+            for (int i = 0; i < 5; i++)
+            {
+                score |= (long)ranks[i] << (16 - i * 4);
+            }
+        }
+
+        return score;
     }
 
     private static void ResetForNextHand()
@@ -449,19 +585,20 @@ class Server
 
     private static void DealHoleCards()
     {
-        foreach (var player in players)
-        {
-            player.HoleCards[0] = deck[0];
-            player.HoleCards[1] = deck[1];
-            deck.RemoveAt(0);
-            deck.RemoveAt(0);
-        }
+        var hands = GenerateTwoCardHands(players.Count);
+
+    for (int i = 0; i < players.Count; i++)
+    {
+        players[i].HoleCards = hands[i];
+
+        SendMessage($"[YOUR_CARDS] {hands[i][0]} {hands[i][1]}", players[i].EndPoint);
+    }
     }
 
     private static void ShuffleDeck()
     {
         string[] suits = { "♠", "♥", "♦", "♣" };
-        string[] ranks = { "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A" };
+        string[] ranks = { "10", "J", "Q", "K", "A" };
 
         deck = new List<string>();
         foreach (string suit in suits)
@@ -482,6 +619,51 @@ class Server
             deck[k] = deck[n];
             deck[n] = value;
         }
+    }
+
+    private static List<string[]> GenerateTwoCardHands(int playerCount)
+    {
+        var hands = new List<string[]>();
+        // Decide how many (2,7) hands to include
+        // TODO: Confirm rules of deciding number of (2,7) hands
+        Random rng = new Random();
+        int numSpecialHands = rng.Next(0, Math.Min(2, playerCount + 1)); // 0, 1, or 2 (2,7) hands
+        // Generate (2,7) hands
+        for (int i = 0; i < numSpecialHands; i++)
+        {
+            hands.Add(new string[] { "2♠", "7♥" }); // You can randomize suits if desired
+        }
+        // Now generate normal two-card hands from the remaining deck
+        int normalHandsNeeded = playerCount - numSpecialHands;
+        var normalHands = new List<string[]>();
+        // Build all possible two-card combos from the main deck
+        var possibleHands = new List<string[]>();
+        for (int i = 0; i < deck.Count; i++)
+        {
+            for (int j = i + 1; j < deck.Count; j++)
+            {
+                possibleHands.Add(new string[] { deck[i], deck[j] });
+            }
+        }
+        // Shuffle possible hands
+        for (int i = possibleHands.Count - 1; i > 0; i--)
+        {
+            int k = rng.Next(i + 1);
+            (possibleHands[i], possibleHands[k]) = (possibleHands[k], possibleHands[i]);
+        }
+        // Take the first N normal hands
+        for (int i = 0; i < normalHandsNeeded; i++)
+        {
+            hands.Add(possibleHands[i]);
+        }
+        // Shuffle final list so (2,7) hands are randomly distributed
+        for (int i = hands.Count - 1; i > 0; i--)
+        {
+            int k = rng.Next(i + 1);
+            (hands[i], hands[k]) = (hands[k], hands[i]);
+        }
+
+        return hands;
     }
 
     private static void SendMessage(string message, IPEndPoint endPoint)
