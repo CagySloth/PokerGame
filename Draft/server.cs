@@ -310,7 +310,7 @@ class Server
             pot = 0;
             return;
         }
-
+      
         // Evaluate each player's hand
         var playerScores = new List<(Player player, long score)>();
         foreach (var player in activePlayers)
@@ -348,7 +348,6 @@ class Server
             // Add remainder to first winner
             winners[0].Chips += remainder;
         }
-
         pot = 0;
     }
 
