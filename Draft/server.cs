@@ -324,7 +324,15 @@ class Server
         playerScores.Sort((a, b) => b.score.CompareTo(a.score));
         long bestScore = playerScores[0].score;
 
+        // Debug: show all scores
+        Console.WriteLine($"[BEST SCORE] {bestScore}");
+        foreach (var ps in playerScores)
+        {
+            Console.WriteLine($"  {ps.player.Name}: {ps.score}");
+        }
+
         var winners = playerScores.Where(x => x.score == bestScore).Select(x => x.player).ToList();
+        Console.WriteLine($"[WINNERS] {winners.Count} player(s) with score {bestScore}");
 
         int totalPot = pot;
         int splitAmount = totalPot / winners.Count;
@@ -355,7 +363,6 @@ class Server
     {
         if (string.IsNullOrEmpty(card)) return 0;
 
-        // Remove suit by checking known endings
         if (card.EndsWith("♠") || card.EndsWith("♥") || card.EndsWith("♦") || card.EndsWith("♣"))
         {
             string rankPart = card.Substring(0, card.Length - 1);
@@ -574,7 +581,7 @@ class Server
 
         return score;
     }
-
+    
     private static void ResetForNextHand()
     {
         foreach (var player in players)

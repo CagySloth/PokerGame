@@ -8,7 +8,7 @@ class Account(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=1000.00) # Starting balance
-    total_games = models.PositiveIntegerField(default=0)
+    total_games = models.PositiveIntegerField(default=0) # Total number of hands
     wins = models.PositiveIntegerField(default=0)
     losses = models.PositiveIntegerField(default=0)
     draws = models.PositiveIntegerField(default=0)
@@ -16,6 +16,7 @@ class Account(models.Model):
     avatar = models.URLField(blank=True, null=True)  # Or use ImageField if storing locally
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(auto_now=True)
+    total_playtime = models.DurationField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

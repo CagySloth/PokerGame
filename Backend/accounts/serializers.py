@@ -21,5 +21,6 @@ class PlayerSerializer(serializers.ModelSerializer):
             'avatar',
             'is_online',
             'last_seen',
+            'total_playtime',
             'created_at',
         ]
