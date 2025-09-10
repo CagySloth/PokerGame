@@ -40,6 +40,7 @@ class Server
     public class Player
     {
         public string Name { get; set; }
+        public int ID { get; set; }
         public int Chips { get; set; } = 1000;
         public int CurrentBet { get; set; }
         public string[] HoleCards { get; set; } = new string[2];
@@ -47,9 +48,10 @@ class Server
         public bool IsActive { get; set; } = true;
         public bool HasActed { get; set; } = false;
 
-        public Player(string name, IPEndPoint endpoint)
+        public Player(string name, int id, IPEndPoint endpoint)
         {
             Name = name;
+            ID = id;
             EndPoint = endpoint;
         }
     }
@@ -310,21 +312,18 @@ class Server
             pot = 0;
             return;
         }
-      
-        // Evaluate each player's hand
+
         var playerScores = new List<(Player player, long score)>();
         foreach (var player in activePlayers)
         {
             long score = EvaluateHand(player.HoleCards, communityCards);
             playerScores.Add((player, score));
-            Console.WriteLine($"{player.Name}: {player.HoleCards[0]} {player.HoleCards[1]} => Score: {score}");
+            Console.WriteLine($"{player.Name}: Score = {score,20:N0}");
         }
 
-        // Sort by score descending
         playerScores.Sort((a, b) => b.score.CompareTo(a.score));
         long bestScore = playerScores[0].score;
 
-        // Find all players with the best hand (handle ties)
         var winners = playerScores.Where(x => x.score == bestScore).Select(x => x.player).ToList();
 
         int totalPot = pot;
@@ -345,15 +344,56 @@ class Server
             {
                 winner.Chips += splitAmount;
             }
-            // Add remainder to first winner
             winners[0].Chips += remainder;
         }
+
         pot = 0;
     }
 
+    // === Helper: GetCardRank ===
+    private static int GetCardRank(string card)
+    {
+        if (string.IsNullOrEmpty(card)) return 0;
+
+        // Remove suit by checking known endings
+        if (card.EndsWith("♠") || card.EndsWith("♥") || card.EndsWith("♦") || card.EndsWith("♣"))
+        {
+            string rankPart = card.Substring(0, card.Length - 1);
+            return rankPart switch
+            {
+                "10" => 10,
+                "J" => 11,
+                "Q" => 12,
+                "K" => 13,
+                "A" => 14,
+                "2" => 2,
+                "3" => 3,
+                "4" => 4,
+                "5" => 5,
+                "6" => 6,
+                "7" => 7,
+                "8" => 8,
+                "9" => 9,
+                _ => 0
+            };
+        }
+        return 0;
+    }
+
+    // === Helper: GetCardSuit ===
+    private static char GetCardSuit(string card)
+    {
+        if (string.IsNullOrEmpty(card)) return '\0';
+        if (card.EndsWith("♠")) return '♠';
+        if (card.EndsWith("♥")) return '♥';
+        if (card.EndsWith("♦")) return '♦';
+        if (card.EndsWith("♣")) return '♣';
+        return '\0';
+    }
+
+    // === Function under test: EvaluateHand() ===
     private static long EvaluateHand(string[] holeCards, string[] communityCards)
     {
-        // Normal evaluation for short deck
         List<string> allCards = new List<string>();
         allCards.AddRange(holeCards);
         allCards.AddRange(communityCards);
@@ -368,41 +408,114 @@ class Server
         bool isStraight = false;
         int highStraight = 0;
 
-        // Check for straight in short deck (10, J, Q, K, A)
         var uniqueRanks = ranks.Distinct().OrderByDescending(x => x).ToList();
-        if (uniqueRanks.Contains(14) && uniqueRanks.Contains(13) && uniqueRanks.Contains(12) && uniqueRanks.Contains(11) && uniqueRanks.Contains(10))
+
+        // --- Check for A-5-4-3-2 Wheel Straight ---
+        if (uniqueRanks.Contains(14) && uniqueRanks.Contains(5) && uniqueRanks.Contains(4) && uniqueRanks.Contains(3) && uniqueRanks.Contains(2))
         {
             isStraight = true;
-            highStraight = 14; // Ace-high straight
+            highStraight = 5; // 5-high straight
+        }
+        // --- Check for any other 5 consecutive ranks ---
+        else
+        {
+            for (int i = 0; i <= uniqueRanks.Count - 5; i++)
+            {
+                if (uniqueRanks[i] - uniqueRanks[i + 4] == 4)
+                {
+                    bool isConsecutive = true;
+                    for (int j = 0; j < 4; j++)
+                    {
+                        if (uniqueRanks[i + j] - uniqueRanks[i + j + 1] != 1)
+                        {
+                            isConsecutive = false;
+                            break;
+                        }
+                    }
+
+                    if (isConsecutive)
+                    {
+                        isStraight = true;
+                        highStraight = uniqueRanks[i];
+                        break;
+                    }
+                }
+            }
         }
 
-        // No wheel straight (A-5-4-3-2) because 5,4,3,2 not in deck
+        // Check for straight flush
+        bool isStraightFlush = false;
+        if (isFlush && isStraight)
+        {
+            char flushSuit = suitCounts.First(kv => kv.Value >= 5).Key;
+            var straightRanks = new HashSet<int>();
 
-        // Four of a Kind, Full House, etc.
+            if (highStraight == 5 && isStraight) // Wheel straight
+            {
+                straightRanks.Add(14); // A
+                straightRanks.Add(5);
+                straightRanks.Add(4);
+                straightRanks.Add(3);
+                straightRanks.Add(2);
+            }
+            else
+            {
+                int current = highStraight;
+                for (int i = 0; i < 5; i++)
+                {
+                    straightRanks.Add(current - i);
+                }
+            }
+
+            int suitedInStraight = 0;
+            foreach (string card in allCards)
+            {
+                int rank = GetCardRank(card);
+                char suit = GetCardSuit(card);
+                if (straightRanks.Contains(rank) && suit == flushSuit)
+                {
+                    suitedInStraight++;
+                }
+            }
+
+            if (suitedInStraight >= 5)
+            {
+                isStraightFlush = true;
+            }
+        }
+
         int[] ofAKind = rankCounts.Values.OrderByDescending(x => x).ToArray();
-        int fourOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 4 ? 4 : 0;
-        int threeOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 3 ? 3 : 0;
-        int pair = ofAKind.Length >= 1 && ofAKind[0] == 2 ? 2 : 0;
-        int twoPair = ofAKind.Length >= 2 && ofAKind[1] == 2 ? 2 : 0;
+        bool isFourOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 4;
+        bool isThreeOfAKind = ofAKind.Length >= 1 && ofAKind[0] == 3;
+        bool isTwoPair = ofAKind.Length >= 2 && ofAKind[1] == 2;
+        bool isPair = ofAKind.Length >= 1 && ofAKind[0] == 2;
 
         long score = 0;
 
-        if (isStraight && isFlush)
+        // Debug output
+        string holeStr = $"{holeCards[0]} {holeCards[1]}";
+        Console.WriteLine($"[DEBUG] {holeStr,8} | S={isStraight,-5} F={isFlush,-5} SF={isStraightFlush,-5} 4K={isFourOfAKind,-5}");
+
+        // 1. Straight Flush
+        if (isStraightFlush)
         {
-            score = (10_000_000L) | (highStraight << 16); // Straight flush
+            score = (10L << 56) | ((long)highStraight << 48);
         }
-        else if (fourOfAKind == 4)
+        // 2. Four of a Kind
+        else if (isFourOfAKind)
         {
             int quadRank = rankCounts.First(kv => kv.Value == 4).Key;
             int kicker = ranks.Where(r => r != quadRank).Max();
-            score = (9_900_000L) | (quadRank << 16) | (kicker << 8);
+            score = (9L << 56) | ((long)quadRank << 48) | ((long)kicker << 40);
         }
-        else if (threeOfAKind == 3 && twoPair >= 2)
+        // 3. Full House
+        else if (isThreeOfAKind && isTwoPair)
         {
             int trips = rankCounts.First(kv => kv.Value == 3).Key;
             int pair = rankCounts.First(kv => kv.Value >= 2 && kv.Key != trips).Key;
-            score = (9_800_000L) | (trips << 16) | (pair << 8);
+            score = (8L << 56) | ((long)trips << 48) | ((long)pair << 40);
         }
+        // 4. Flush
         else if (isFlush)
         {
             var flushRanks = allCards
@@ -410,44 +523,52 @@ class Server
                 .Select(GetCardRank)
                 .OrderByDescending(x => x)
                 .Take(5);
-            score = (9_700_000L);
-            int shift = 16;
-            foreach (int r in flushRanks)
+            score = (7L << 56);
+            var rankList = flushRanks.ToList();
+            for (int i = 0; i < rankList.Count; i++)
             {
-                score |= (r << shift);
-                shift -= 8;
+                score |= ((long)rankList[i]) << (48 - i * 8);
             }
         }
+        // 5. Straight
         else if (isStraight)
         {
-            score = (9_600_000L) | (highStraight << 16);
+            score = (6L << 56) | ((long)highStraight << 48);
         }
-        else if (threeOfAKind == 3)
+        // 6. Three of a Kind
+        else if (isThreeOfAKind)
         {
             int trips = rankCounts.First(kv => kv.Value == 3).Key;
-            var kickers = ranks.Where(r => r != trips).Take(2);
-            score = (9_550_000L) | (trips << 16) | (kickers.First() << 8) | kickers.Last();
+            var kickers = ranks.Where(r => r != trips).Take(2).ToList();
+            score = (5L << 56) | ((long)trips << 48) | ((long)kickers[0] << 40) | ((long)kickers[1] << 32);
         }
-        else if (twoPair == 2)
+        // 7. Two Pair
+        else if (isTwoPair)
         {
-            var pairs = rankCounts.Where(kv => kv.Value == 2).OrderByDescending(kv => kv.Key).Take(2);
-            int firstPair = pairs.First().Key;
-            int secondPair = pairs.Last().Key;
+            var pairs = rankCounts.Where(kv => kv.Value == 2).OrderByDescending(kv => kv.Key).Take(2).ToList();
+            int firstPair = pairs[0].Key;
+            int secondPair = pairs[1].Key;
             int kicker = ranks.Where(r => r != firstPair && r != secondPair).Max();
-            score = (9_540_000L) | (firstPair << 16) | (secondPair << 8) | kicker;
+            score = (4L << 56) | ((long)firstPair << 48) | ((long)secondPair << 40) | ((long)kicker << 32);
         }
-        else if (pair == 2)
+        // 8. One Pair
+        else if (isPair)
         {
             int pairRank = rankCounts.First(kv => kv.Value == 2).Key;
-            var kickers = ranks.Where(r => r != pairRank).Take(3);
-            score = (9_530_000L) | (pairRank << 16) | (kickers.ElementAt(0) << 8) | (kickers.ElementAt(1) << 4) | kickers.ElementAt(2);
+            var kickers = ranks.Where(r => r != pairRank).Take(3).ToList();
+            score = (3L << 56)
+                | ((long)pairRank << 48)
+                | ((long)kickers[0] << 40)
+                | ((long)kickers[1] << 32)
+                | ((long)kickers[2] << 24);
         }
+        // 9. High Card
         else
         {
-            score = (9_520_000L);
+            score = (2L << 56);
             for (int i = 0; i < 5; i++)
             {
-                score |= (long)ranks[i] << (16 - i * 4);
+                score |= ((long)ranks[i]) << (48 - i * 8);
             }
         }
 
@@ -585,20 +706,19 @@ class Server
 
     private static void DealHoleCards()
     {
-        var hands = GenerateTwoCardHands(players.Count);
-
-    for (int i = 0; i < players.Count; i++)
-    {
-        players[i].HoleCards = hands[i];
-
-        SendMessage($"[YOUR_CARDS] {hands[i][0]} {hands[i][1]}", players[i].EndPoint);
-    }
+        foreach (var player in players)
+        {
+            player.HoleCards[0] = deck[0];
+            player.HoleCards[1] = deck[1];
+            deck.RemoveAt(0);
+            deck.RemoveAt(0);
+        }
     }
 
     private static void ShuffleDeck()
     {
         string[] suits = { "♠", "♥", "♦", "♣" };
-        string[] ranks = { "10", "J", "Q", "K", "A" };
+        string[] ranks = { "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A" };
 
         deck = new List<string>();
         foreach (string suit in suits)
@@ -619,51 +739,6 @@ class Server
             deck[k] = deck[n];
             deck[n] = value;
         }
-    }
-
-    private static List<string[]> GenerateTwoCardHands(int playerCount)
-    {
-        var hands = new List<string[]>();
-        // Decide how many (2,7) hands to include
-        // TODO: Confirm rules of deciding number of (2,7) hands
-        Random rng = new Random();
-        int numSpecialHands = rng.Next(0, Math.Min(2, playerCount + 1)); // 0, 1, or 2 (2,7) hands
-        // Generate (2,7) hands
-        for (int i = 0; i < numSpecialHands; i++)
-        {
-            hands.Add(new string[] { "2♠", "7♥" }); // You can randomize suits if desired
-        }
-        // Now generate normal two-card hands from the remaining deck
-        int normalHandsNeeded = playerCount - numSpecialHands;
-        var normalHands = new List<string[]>();
-        // Build all possible two-card combos from the main deck
-        var possibleHands = new List<string[]>();
-        for (int i = 0; i < deck.Count; i++)
-        {
-            for (int j = i + 1; j < deck.Count; j++)
-            {
-                possibleHands.Add(new string[] { deck[i], deck[j] });
-            }
-        }
-        // Shuffle possible hands
-        for (int i = possibleHands.Count - 1; i > 0; i--)
-        {
-            int k = rng.Next(i + 1);
-            (possibleHands[i], possibleHands[k]) = (possibleHands[k], possibleHands[i]);
-        }
-        // Take the first N normal hands
-        for (int i = 0; i < normalHandsNeeded; i++)
-        {
-            hands.Add(possibleHands[i]);
-        }
-        // Shuffle final list so (2,7) hands are randomly distributed
-        for (int i = hands.Count - 1; i > 0; i--)
-        {
-            int k = rng.Next(i + 1);
-            (hands[i], hands[k]) = (hands[k], hands[i]);
-        }
-
-        return hands;
     }
 
     private static void SendMessage(string message, IPEndPoint endPoint)
