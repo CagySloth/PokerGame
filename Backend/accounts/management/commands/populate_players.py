@@ -1,12 +1,12 @@
 # accounts/management/commands/populate_players.py
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
-from accounts.models import Player
+from accounts.models import Account
 import random
 from datetime import timedelta
 
 class Command(BaseCommand):
-    help = 'Populates the database with 100 random players for testing'
+    help = 'Populates the database with 100 random players for testing (safe to re-run)'
 
     def handle(self, *args, **options):
         # Sample data
@@ -25,6 +25,7 @@ class Command(BaseCommand):
         ]
 
         arenas = [
+            'Junkyard',
             'Texas Hold\'em Lounge',
             'Omaha Pit',
             'High Roller Club',
@@ -37,10 +38,10 @@ class Command(BaseCommand):
             'Underground Poker Den'
         ]
 
-        # Balance range
         balances = [500, 1000, 2500, 5000, 10000]
 
         total_created = 0
+        total_updated = 0
 
         for i in range(100):
             # Generate random data
@@ -63,8 +64,8 @@ class Command(BaseCommand):
             minutes = random.randint(0, 59)
             total_playtime = timedelta(hours=hours, minutes=minutes)
 
-            # Create User and Player
-            user, created = User.objects.get_or_create(
+            # 👉 Step 1: Get or create User (safe)
+            user, user_created = User.objects.get_or_create(
                 username=username,
                 defaults={
                     'email': email,
@@ -73,32 +74,41 @@ class Command(BaseCommand):
                 }
             )
 
+            # 👉 Step 2: Get or create Account (AVOIDS duplicate key error)
+            account, created = Account.objects.get_or_create(
+                user=user,
+                defaults={
+                    'name': name,
+                    'arena': arena,
+                    'balance': balance,
+                    'total_games': total_games,
+                    'wins': wins,
+                    'losses': losses,
+                    'draws': draws,
+                    'total_playtime': total_playtime,
+                }
+            )
+
             if created:
-                Player.objects.create(
-                    user=user,
-                    name=name,
-                    arena=arena,
-                    balance=balance,
-                    total_games=total_games,
-                    wins=wins,
-                    losses=losses,
-                    draws=draws,
-                    total_playtime=total_playtime,
-                )
                 total_created += 1
             else:
-                # Update existing player if needed
-                player = user.player
-                player.name = name
-                player.arena = arena
-                player.balance = balance
-                player.total_games = total_games
-                player.wins = wins
-                player.losses = losses
-                player.draws = draws
-                player.total_playtime = total_playtime
-                player.save()
+                # 👉 Update existing account with new random data
+                account.name = name
+                account.arena = arena
+                account.balance = balance
+                account.total_games = total_games
+                account.wins = wins
+                account.losses = losses
+                account.draws = draws
+                account.total_playtime = total_playtime
+                account.save()
+                total_updated += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f'Successfully populated database with {total_created} new players (and updated existing ones).')
+            self.style.SUCCESS(
+                f'Successfully processed 100 players:\n'
+                f'  ✅ {total_created} new accounts created\n'
+                f'  🔄 {total_updated} existing accounts updated\n'
+                f'  💡 Safe to run again!'
+            )
         )

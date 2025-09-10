@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from datetime import timedelta
 
 
 class Account(models.Model):
@@ -18,7 +19,7 @@ class Account(models.Model):
     avatar = models.URLField(blank=True, null=True)  # Or use ImageField if storing locally
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(auto_now=True)
-    total_playtime = models.DurationField(default=0)
+    total_playtime = models.DurationField(default=timedelta(0))
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -34,17 +35,18 @@ class Account(models.Model):
 
 
 @receiver(post_save, sender=User)
-def create_player_profile(sender, instance, created, **kwargs):
+def create_account_profile(sender, instance, created, **kwargs):
     if created:
-        full_name = instance.get_full_name().strip()
-        name = full_name if full_name else instance.username
-        Account.objects.create(
+        # Only create if no Account exists
+        Account.objects.get_or_create(
             user=instance,
-            name=name,
-            arena="General Arena"  # Default arena
+            defaults={
+                'name': instance.get_full_name().strip() or instance.username,
+                'arena': 'Junkyard',
+            }
         )
 
 @receiver(post_save, sender=User)
 def save_player_profile(sender, instance, **kwargs):
     """Save the Player profile when the User is saved."""
-    instance.player.save()
+    instance.account.save()
