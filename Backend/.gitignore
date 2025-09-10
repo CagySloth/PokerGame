@@ -1,0 +1,95 @@
+# --------------------------------
+# Python
+# --------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.orig
+*.rej
+.*.swp
+.*.swo
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# --------------------------------
+# Django
+# --------------------------------
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+collectstatic/
+
+# --------------------------------
+# IDE & Editors
+# --------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.sublime-project
+*.sublime-workspace
+*.komodoproject
+*.pl
+*.kate-swp
+
+# --------------------------------
+# Environment Variables & Secrets
+# --------------------------------
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+.env.sample
+.env.*.local
+
+# --------------------------------
+# Coverage & Testing
+# --------------------------------
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# --------------------------------
+# Logs
+# --------------------------------
+logs
+*.log
