@@ -1,3 +1,13 @@
-from django.shortcuts import render
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .models import Player
+from .serializers import PlayerSerializer
 
-# Create your views here.
+@api_view(['GET'])
+def player_list(request):
+    """
+    Return a list of all players with info.
+    """
+    players = Player.objects.all().select_related('user')  # Efficient query
+    serializer = PlayerSerializer(players, many=True)
+    return Response(serializer.data)
