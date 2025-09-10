@@ -7,6 +7,8 @@ from django.dispatch import receiver
 class Account(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=150, blank=False, null=False)  # Display name
+    arena = models.CharField(max_length=100, default="Junkyard")  # Arena name
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=1000.00) # Starting balance
     total_games = models.PositiveIntegerField(default=0) # Total number of hands
     wins = models.PositiveIntegerField(default=0)
@@ -32,11 +34,15 @@ class Account(models.Model):
 
 
 @receiver(post_save, sender=User)
-def create_account_profile(sender, instance, created, **kwargs):
-    """Create an Account profile whenever a new User is created."""
+def create_player_profile(sender, instance, created, **kwargs):
     if created:
-        Account.objects.create(user=instance)
-
+        full_name = instance.get_full_name().strip()
+        name = full_name if full_name else instance.username
+        Account.objects.create(
+            user=instance,
+            name=name,
+            arena="General Arena"  # Default arena
+        )
 
 @receiver(post_save, sender=User)
 def save_player_profile(sender, instance, **kwargs):

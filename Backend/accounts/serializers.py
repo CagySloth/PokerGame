@@ -10,8 +10,10 @@ class PlayerSerializer(serializers.ModelSerializer):
         model = Player
         fields = [
             'id',
+            'name',           # ← New
             'username',
             'email',
+            'arena',          # ← New
             'balance',
             'total_games',
             'wins',
@@ -21,6 +23,11 @@ class PlayerSerializer(serializers.ModelSerializer):
             'avatar',
             'is_online',
             'last_seen',
-            'total_playtime',
             'created_at',
+            'total_playtime',
         ]
+
+class PlayerLeaderboardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Player
+        fields = ['name', 'arena', 'total_games', 'total_playtime']
